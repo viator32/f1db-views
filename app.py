@@ -180,9 +180,7 @@ with tab_ai:
             st.dataframe(res["df"], use_container_width=True)
 
     st.markdown("### 🔍 Run custom SQL")
-    st.session_state.manual_sql = st.text_area(
-        "SQL query", value=st.session_state.manual_sql, key="manual_sql", height=150
-    )
+    st.text_area("SQL query", key="manual_sql", height=150)
     if st.button("Execute SQL") and st.session_state.manual_sql.strip():
         with st.spinner("Running SQL…"):
             try:
