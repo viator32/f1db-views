@@ -1,3 +1,4 @@
+import os
 import streamlit as st
 import plotly.express as px
 import pandas as pd
@@ -140,11 +141,14 @@ with tab_ai:
     if "ai_history" not in st.session_state:
         st.session_state.ai_history = []
 
-    q = st.text_input("Ask something about the F1 data")
-    if st.button("Run AI query") and q:
-        with st.spinner("Gemini Flash is thinking…"):
-            res = ask(q)
-        st.session_state.ai_history.append((q, res))
+    if not os.getenv("GEMINI_API_KEY"):
+        st.info("Set GEMINI_API_KEY to enable AI queries.")
+    else:
+        q = st.text_input("Ask something about the F1 data")
+        if st.button("Run AI query") and q:
+            with st.spinner("Gemini Flash is thinking…"):
+                res = ask(q)
+            st.session_state.ai_history.append((q, res))
 
     # Show history, newest on top
     for i, (query, res) in enumerate(reversed(st.session_state.ai_history), 1):

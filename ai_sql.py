@@ -1,6 +1,9 @@
 # ai_sql.py
-import os, re, sqlparse
+import os
+import re
+import sqlparse
 from functools import lru_cache
+import pandas as pd
 import google.generativeai as genai
 from db import run_query
 
@@ -31,9 +34,15 @@ v_session_results(session_id, session_name, meeting_name, year, acronym, full_na
 v_lap_detail(lap_id, session_id, driver_id, lap_number, lap_time_s, sector1_s, sector2_s, sector3_s)
 """
 
-SYSTEM_CONTEXT = f"""You are a helpful assistant that converts natural language into SQL queries 
-for a Formula 1 Postgres database.
-"""
+SYSTEM_CONTEXT = (
+    "You are a helpful assistant that converts natural language into SQL queries "
+    "for a Formula 1 Postgres database."
+)
+
+SUMMARY_CONTEXT = (
+    "You are an expert data analyst. Summarize the SQL query results provided "
+    "to answer the user's question."
+)
 
 # 3️⃣ Generate SQL from question
 def question_to_sql(question: str) -> tuple[str, str, str]:
@@ -48,8 +57,29 @@ def question_to_sql(question: str) -> tuple[str, str, str]:
 
     return cleaned_sql, raw_text, question
 
+
+def _summarize(question: str, df: pd.DataFrame) -> str:
+    """Use Gemini to summarise query results in natural language."""
+    preview = df.head(5).to_csv(index=False)
+    resp = _model().generate_content([
+        SUMMARY_CONTEXT,
+        f"Question: {question}",
+        f"Results:\n{preview}",
+        "Answer:",
+    ])
+    return resp.text.strip()
+
 # 4️⃣ Run query or fallback to raw
 def ask(question: str):
+    if not os.getenv("GEMINI_API_KEY"):
+        return {
+            "raw": "",
+            "sql": None,
+            "df": None,
+            "answer": None,
+            "error": "GEMINI_API_KEY environment variable not set",
+        }
+
     try:
         sql, raw, _ = question_to_sql(question)
         parsed = sqlparse.parse(sql)[0]
@@ -61,13 +91,11 @@ def ask(question: str):
 
         df = run_query(sql)
 
-        # Basic interpretation of results
+        # Summarise results using Gemini
         if df.empty:
             answer = "No results found."
         else:
-            first_row = df.iloc[0].to_dict()
-            formatted = ", ".join(f"{k} = {v}" for k, v in first_row.items())
-            answer = f"Top result: {formatted}"
+            answer = _summarize(question, df)
 
         return {"raw": raw, "sql": sql, "df": df, "answer": answer, "error": None}
     except Exception as e:
