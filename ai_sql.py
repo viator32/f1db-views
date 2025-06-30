@@ -256,7 +256,6 @@ def ask(question: str):
             "answer": None,
             "error": "GEMINI_API_KEY environment variable not set",
         }
-
     try:
         sql, raw, _ = question_to_sql(question)
         parsed = sqlparse.parse(sql)[0]
