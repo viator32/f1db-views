@@ -64,7 +64,7 @@ def question_to_sql(question: str) -> str:
 ###################
 #  3.4  End-to-end #
 ###################
-def answer(question: str):
+def ask(question: str):
     sql = question_to_sql(question)
     df  = run_query(sql)
     return sql, df

@@ -1,6 +1,10 @@
 import streamlit as st
 import plotly.express as px
 import pandas as pd
+from ssh_tunnel import start_ssh_tunnel
+
+# Open the SSH tunnel before anything else
+start_ssh_tunnel()
 
 from db import run_query
 from ai_sql import ask
@@ -78,16 +82,37 @@ with tab_stint:
     st.plotly_chart(fig, use_container_width=True)
 
 # 4️⃣  Pit-stop timeline
+# 4️⃣  Pit-stop timeline
 with tab_pit:
     pit_df = run_query(
-        "SELECT * FROM analysis.mv_pit_stop_timeline WHERE session_id = :sid",
-        sid=int(session_id))
-    st.subheader("Pit-stop timeline")
-    fig = px.timeline(pit_df, x_start="time", x_end="time",
-                      y="full_name", color="team_name",
-                      hover_data=["lap_number","duration"])
-    fig.update_yaxes(autorange="reversed")  # timeline style
-    st.plotly_chart(fig, use_container_width=True)
+        """
+        SELECT *
+        FROM analysis.mv_pit_stop_timeline
+        WHERE session_id = :sid
+        """,
+        sid=int(session_id),
+    )
+
+    if pit_df.empty:
+        st.info("No pit-stop data for this session.")
+    else:
+        st.subheader("Pit-stop timeline")
+
+        # Plotly needs proper datetime objects
+        pit_df["start_time"] = pd.to_datetime(pit_df["start_time"])
+        pit_df["end_time"]   = pd.to_datetime(pit_df["end_time"])
+
+        fig = px.timeline(
+            pit_df,
+            x_start="start_time",
+            x_end="end_time",
+            y="full_name",
+            color="team_name",
+            hover_data=["lap_number", "duration"],
+        )
+        fig.update_yaxes(autorange="reversed")
+        st.plotly_chart(fig, use_container_width=True)
+
 
 # 5️⃣  Sector performance
 with tab_sector:
