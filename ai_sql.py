@@ -23,25 +23,40 @@ def _model():
 
 # 2️⃣ Prompt setup
 SCHEMA_SNIPPET = """
-Tables / Views you can use (PostgreSQL):
+Tables you can query (PostgreSQL):
 
 driver(driver_id, broadcast_name, first_name, last_name, full_name, country_code, picture_url, acronym)
 team(team_name, team_colour)
-session(session_id, meeting_id, session_name, session_type, start_time, end_time)
+circuit(circuit_id, short_name, official_name, country_code, country_key, location)
+meeting(meeting_id, meeting_name, official_name, circuit_id, start, year)
+session(session_id, meeting_id, start_time, end_time, session_name, session_type)
 team_membership(team_name, driver_id, session_id)
-lap(lap_id, driver_id, session_id, lap_number, duration, out_lap, top_speed)
+weather(session_id, time, temperature, humidity, air_pressure, rainfall, track_temperature, wind_direction, wind_speed)
+race_control(session_id, time, driver_id, category, flag, lap_number, message, scope, sector)
+result(driver_id, session_id, position, total_time, gap_to_winner, points, status)
+location(time, driver_id, session_id, x, y, z)
+position(time, driver_id, session_id, position)
+intervals(time, driver_id, session_id, gap_to_leader, overlap_to_leader, gap_to_next, overlap_to_next)
+lap(lap_id, driver_id, session_id, lap_number, start_time, i1_speed, i2_speed, out_lap, duration, top_speed)
+sector(id, lap_id, sector_number, duration)
+segment(sector_id, segment_number, segment_index, segment_status)
+car_data(time, driver_id, session_id, brake_is_pressed, drs_status, gear, rpm, speed, throttle)
+pit_stop(time, driver_id, session_id, duration, lap_number)
+stint(driver_id, session_id, stint_number, compound, lap_start, lap_end, tire_age_at_start)
 v_session_results(session_id, session_name, meeting_name, year, acronym, full_name, position, points, team_name, team_colour)
 v_lap_detail(lap_id, session_id, driver_id, lap_number, lap_time_s, sector1_s, sector2_s, sector3_s)
+v_driver_points(full_name, year, season_points)
 """
 
 SYSTEM_CONTEXT = (
-    "You are a helpful assistant that converts natural language into SQL queries "
-    "for a Formula 1 Postgres database."
+    "You convert user questions into SQL for a Formula 1 Postgres database. "
+    "Use only the tables listed in the schema and return a single SELECT "
+    "statement without explanations."
 )
 
 SUMMARY_CONTEXT = (
-    "You are an expert data analyst. Summarize the SQL query results provided "
-    "to answer the user's question."
+    "You are an expert data analyst. Using the query results preview, write a "
+    "concise answer to the user's question without disclaimers."
 )
 
 # 3️⃣ Generate SQL from question
