@@ -50,6 +50,14 @@ def question_to_sql(question: str) -> tuple[str, str, str]:
 
 # 4️⃣ Run query or fallback to raw
 def ask(question: str):
+    if not os.getenv("GEMINI_API_KEY"):
+        return {
+            "raw": "",
+            "sql": None,
+            "df": None,
+            "answer": None,
+            "error": "GEMINI_API_KEY environment variable not set",
+        }
     try:
         sql, raw, _ = question_to_sql(question)
         parsed = sqlparse.parse(sql)[0]
