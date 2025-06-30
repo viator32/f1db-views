@@ -2,27 +2,23 @@
 import os, re, sqlparse
 from functools import lru_cache
 import google.generativeai as genai
-from db import run_query           # your helper from yesterday
+from db import run_query
 
-###############
-#  3.1  Init  #
-###############
+# 1️⃣ Gemini config
 genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
 
 @lru_cache
 def _model():
     return genai.GenerativeModel(
-        model_name=os.getenv("GEMINI_MODEL", "gemini-2.0-flash"),
+        model_name=os.getenv("GEMINI_MODEL", "gemini-1.5-flash"),
         generation_config={
             "response_mime_type": "text/plain",
-            "temperature": 0.0,       # deterministic SQL
-            "max_output_tokens": 256,
+            "temperature": 0.0,
+            "max_output_tokens": 512,
         },
     )
 
-###############
-#  3.2  NL→SQL #
-###############
+# 2️⃣ Prompt setup
 SCHEMA_SNIPPET = """
 Tables / Views you can use (PostgreSQL):
 
@@ -35,36 +31,50 @@ v_session_results(session_id, session_name, meeting_name, year, acronym, full_na
 v_lap_detail(lap_id, session_id, driver_id, lap_number, lap_time_s, sector1_s, sector2_s, sector3_s)
 """
 
-SYSTEM_PROMPT = f"""You are a Postgres SQL generator for an F1 telemetry database.
-Return **only** one valid SQL SELECT statement, never multiple commands, never DDL/DML.
-Use table aliases. Prefer the two helper views when possible:
-  * v_session_results –  final positions & points per driver per session
-  * v_lap_detail      –  lap times incl. sectors
-Columns are seconds unless stated otherwise.
-Schema:
-{SCHEMA_SNIPPET}
+SYSTEM_CONTEXT = f"""You are a helpful assistant that converts natural language into SQL queries 
+for a Formula 1 Postgres database.
 """
 
-def question_to_sql(question: str) -> str:
-    response = _model().generate_content(
-        [{"role": "system", "parts": [SYSTEM_PROMPT]},
-         {"role": "user",   "parts": [question]}]
-    )
-    sql = response.text.strip().strip("`").strip()
-    
-    # ---- 3.3  Safety gate  ----------------------------------------------
-    parsed = sqlparse.parse(sql)[0]
-    if parsed.get_type() != "SELECT":
-        raise ValueError("Only SELECT statements are allowed.")
-    # forbid ; or DROP etc.
-    if re.search(r";|\b(update|delete|insert|drop|alter)\b", sql, re.I):
-        raise ValueError("Unsafe SQL detected.")
-    return sql
+# 3️⃣ Generate SQL from question
+def question_to_sql(question: str) -> tuple[str, str, str]:
+    response = _model().generate_content([
+        f"{SYSTEM_CONTEXT}\n\nSchema:\n{SCHEMA_SNIPPET}",
+        f"Natural language: {question}",
+        "SQL:"
+    ])
 
-###################
-#  3.4  End-to-end #
-###################
+    raw_text = response.text.strip()
+    cleaned_sql = raw_text.strip("`").strip()
+
+    return cleaned_sql, raw_text, question
+
+# 4️⃣ Run query or fallback to raw
 def ask(question: str):
-    sql = question_to_sql(question)
-    df  = run_query(sql)
-    return sql, df
+    try:
+        sql, raw, _ = question_to_sql(question)
+        parsed = sqlparse.parse(sql)[0]
+
+        if parsed.get_type() != "SELECT":
+            raise ValueError("Not a SELECT")
+        if re.search(r";|\b(update|delete|insert|drop|alter)\b", sql, re.I):
+            raise ValueError("Unsafe SQL")
+
+        df = run_query(sql)
+
+        # Basic interpretation of results
+        if df.empty:
+            answer = "No results found."
+        else:
+            first_row = df.iloc[0].to_dict()
+            formatted = ", ".join(f"{k} = {v}" for k, v in first_row.items())
+            answer = f"Top result: {formatted}"
+
+        return {"raw": raw, "sql": sql, "df": df, "answer": answer, "error": None}
+    except Exception as e:
+        return {
+            "raw": locals().get("raw", "-- no raw text --"),
+            "sql": None,
+            "df": None,
+            "answer": None,
+            "error": str(e)
+        }

@@ -137,12 +137,30 @@ with tab_season:
 
 # 7️⃣  Ask AI
 with tab_ai:
-    q = st.text_input("Ask something (natural language → SQL)")
+    if "ai_history" not in st.session_state:
+        st.session_state.ai_history = []
+
+    q = st.text_input("Ask something about the F1 data")
     if st.button("Run AI query") and q:
         with st.spinner("Gemini Flash is thinking…"):
-            try:
-                sql, res = ask(q)
-                st.code(sql, language="sql")
-                st.dataframe(res, use_container_width=True)
-            except Exception as e:
-                st.error(e)
+            res = ask(q)
+        st.session_state.ai_history.append((q, res))
+
+    # Show history, newest on top
+    for i, (query, res) in enumerate(reversed(st.session_state.ai_history), 1):
+        with st.expander(f"🧠 {i}. {query}", expanded=False):
+            st.markdown("#### 📝 Raw Gemini response")
+            st.code(res["raw"], language="text")
+
+            if res["error"]:
+                st.error(f"⚠️ {res['error']}")
+                continue
+
+            st.markdown("#### 💡 Generated SQL")
+            st.code(res["sql"], language="sql")
+
+            st.markdown("#### 🗒️ Answer summary")
+            st.success(res["answer"])
+
+            st.markdown("#### 📊 Result data")
+            st.dataframe(res["df"], use_container_width=True)
