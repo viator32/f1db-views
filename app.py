@@ -140,6 +140,12 @@ with tab_season:
 with tab_ai:
     if "ai_history" not in st.session_state:
         st.session_state.ai_history = []
+    if "manual_sql" not in st.session_state:
+        st.session_state.manual_sql = ""
+    if "sql_df" not in st.session_state:
+        st.session_state.sql_df = None
+    if "sql_error" not in st.session_state:
+        st.session_state.sql_error = None
 
     if not os.getenv("GEMINI_API_KEY"):
         st.info("Set GEMINI_API_KEY to enable AI queries.")
@@ -149,6 +155,10 @@ with tab_ai:
             with st.spinner("Gemini Flash is thinking…"):
                 res = ask(q)
             st.session_state.ai_history.append((q, res))
+            if res.get("sql"):
+                st.session_state.manual_sql = res["sql"]
+                st.session_state.sql_df = res["df"]
+                st.session_state.sql_error = res["error"]
 
     # Show history, newest on top
     for i, (query, res) in enumerate(reversed(st.session_state.ai_history), 1):
@@ -168,3 +178,21 @@ with tab_ai:
 
             st.markdown("#### 📊 Result data")
             st.dataframe(res["df"], use_container_width=True)
+
+    st.markdown("### 🔍 Run custom SQL")
+    st.session_state.manual_sql = st.text_area(
+        "SQL query", value=st.session_state.manual_sql, key="manual_sql", height=150
+    )
+    if st.button("Execute SQL") and st.session_state.manual_sql.strip():
+        with st.spinner("Running SQL…"):
+            try:
+                st.session_state.sql_df = run_query(st.session_state.manual_sql)
+                st.session_state.sql_error = None
+            except Exception as e:
+                st.session_state.sql_df = None
+                st.session_state.sql_error = str(e)
+
+    if st.session_state.sql_error:
+        st.error(st.session_state.sql_error)
+    if st.session_state.sql_df is not None:
+        st.dataframe(st.session_state.sql_df, use_container_width=True)

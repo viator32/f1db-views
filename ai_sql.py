@@ -23,29 +23,191 @@ def _model():
 
 # 2️⃣ Prompt setup
 SCHEMA_SNIPPET = """
-Tables you can query (PostgreSQL):
+Database schema overview (PostgreSQL):
 
-driver(driver_id, broadcast_name, first_name, last_name, full_name, country_code, picture_url, acronym)
-team(team_name, team_colour)
-circuit(circuit_id, short_name, official_name, country_code, country_key, location)
-meeting(meeting_id, meeting_name, official_name, circuit_id, start, year)
-session(session_id, meeting_id, start_time, end_time, session_name, session_type)
-team_membership(team_name, driver_id, session_id)
-weather(session_id, time, temperature, humidity, air_pressure, rainfall, track_temperature, wind_direction, wind_speed)
-race_control(session_id, time, driver_id, category, flag, lap_number, message, scope, sector)
-result(driver_id, session_id, position, total_time, gap_to_winner, points, status)
-location(time, driver_id, session_id, x, y, z)
-position(time, driver_id, session_id, position)
-intervals(time, driver_id, session_id, gap_to_leader, overlap_to_leader, gap_to_next, overlap_to_next)
-lap(lap_id, driver_id, session_id, lap_number, start_time, i1_speed, i2_speed, out_lap, duration, top_speed)
-sector(id, lap_id, sector_number, duration)
-segment(sector_id, segment_number, segment_index, segment_status)
-car_data(time, driver_id, session_id, brake_is_pressed, drs_status, gear, rpm, speed, throttle)
-pit_stop(time, driver_id, session_id, duration, lap_number)
-stint(driver_id, session_id, stint_number, compound, lap_start, lap_end, tire_age_at_start)
-v_session_results(session_id, session_name, meeting_name, year, acronym, full_name, position, points, team_name, team_colour)
-v_lap_detail(lap_id, session_id, driver_id, lap_number, lap_time_s, sector1_s, sector2_s, sector3_s)
-v_driver_points(full_name, year, season_points)
+CREATE TABLE driver(
+    driver_id int PRIMARY KEY,
+    broadcast_name varchar(200) NOT NULL,
+    first_name varchar(200) NOT NULL,
+    last_name varchar(200) NOT NULL,
+    full_name varchar(200) NOT NULL,
+    country_code char(3) NOT NULL,
+    picture_url varchar(200),
+    acronym char(3) NOT NULL
+);
+
+CREATE TABLE team(
+    team_name varchar(200) PRIMARY KEY,
+    team_colour char(6) NOT NULL
+);
+
+CREATE TABLE circuit(
+    circuit_id int PRIMARY KEY,
+    short_name varchar(200) NOT NULL,
+    official_name varchar(200) NOT NULL,
+    country_code char(3) NOT NULL,
+    country_key int NOT NULL,
+    location varchar(200) NOT NULL
+);
+
+CREATE TABLE meeting(
+    meeting_id int PRIMARY KEY,
+    meeting_name varchar(200) NOT NULL,
+    official_name varchar(200) NOT NULL,
+    circuit_id int references circuit NOT NULL,
+    start timestamp NOT NULL,
+    year int
+);
+
+CREATE TABLE session(
+    session_id int PRIMARY KEY,
+    meeting_id int references meeting NOT NULL,
+    start_time timestamp NOT NULL,
+    end_time timestamp,
+    session_name varchar(200) NOT NULL,
+    session_type varchar(200) NOT NULL
+);
+
+CREATE TABLE team_membership(
+    team_name varchar(200) references team NOT NULL,
+    driver_id int references driver NOT NULL,
+    session_id int references session NOT NULL,
+    UNIQUE(team_name, driver_id, session_id)
+);
+
+CREATE TABLE weather(
+    session_id int references session NOT NULL,
+    time timestamp NOT NULL,
+    temperature float,
+    humidity int,
+    air_pressure  float,
+    rainfall float,
+    track_temperature float,
+    wind_direction int,
+    wind_speed float,
+    UNIQUE(session_id, time)
+);
+
+CREATE TABLE race_control(
+    session_id int references session NOT NULL,
+    time timestamp NOT NULL,
+    driver_id int references driver DEFAULT NULL,
+    category varchar(200) NOT NULL,
+    flag varchar(200) DEFAULT NULL,
+    lap_number int DEFAULT NULL,
+    message varchar(500),
+    scope varchar(200),
+    sector int DEFAULT NULL,
+    UNIQUE(session_id, driver_id, time)
+);
+
+CREATE TABLE result(
+    driver_id int references driver NOT NULL,
+    session_id int references session NOT NULL,
+    position int NOT NULL,
+    total_time float,
+    gap_to_winner varchar(200),
+    points int,
+    status varchar(200),
+    PRIMARY KEY(driver_id, session_id)
+);
+
+CREATE TABLE location(
+    location_id SERIAL PRIMARY KEY,
+    time timestamp NOT NULL,
+    driver_id int references driver NOT NULL,
+    session_id int references session NOT NULL,
+    x int,
+    y int,
+    z int,
+    UNIQUE(time, driver_id, session_id)
+);
+
+CREATE TABLE position(
+    time timestamp NOT NULL,
+    driver_id int references driver NOT NULL,
+    session_id int references session NOT NULL,
+    position int,
+    PRIMARY KEY(time, driver_id, session_id)
+);
+
+CREATE TABLE intervals(
+    time timestamp NOT NULL,
+    driver_id int references driver NOT NULL,
+    session_id int references session NOT NULL,
+    gap_to_leader float,
+    overlap_to_leader int DEFAULT 0,
+    gap_to_next float,
+    overlap_to_next int DEFAULT 0,
+    PRIMARY KEY(time, driver_id, session_id)
+);
+
+CREATE TABLE lap(
+    lap_id SERIAL PRIMARY KEY,
+    driver_id int references driver NOT NULL,
+    session_id int references session NOT NULL,
+    lap_number int NOT NULL,
+    start_time timestamp,
+    i1_speed int,
+    i2_speed int,
+    out_lap int DEFAULT 0 NOT NULL,
+    duration float,
+    top_speed int,
+    UNIQUE(driver_id, session_id, lap_number)
+);
+
+CREATE TABLE sector(
+    id SERIAL PRIMARY KEY,
+    lap_id int references lap NOT NULL,
+    sector_number int NOT NULL,
+    duration float NOT NULL,
+    UNIQUE(lap_id, sector_number)
+);
+
+CREATE TABLE segment(
+    sector_id int references sector NOT NULL,
+    segment_number int NOT NULL,
+    segment_index float NOT NULL,
+    segment_status varchar(200) NOT NULL,
+    UNIQUE(sector_id, segment_number)
+);
+
+CREATE TABLE car_data(
+    time timestamp NOT NULL,
+    driver_id int references driver NOT NULL,
+    session_id int references session NOT NULL,
+    brake_is_pressed int,
+    drs_status int,
+    gear int,
+    rpm int,
+    speed int,
+    throttle int,
+    UNIQUE(time, driver_id, session_id)
+);
+
+CREATE TABLE pit_stop(
+    time timestamp NOT NULL,
+    driver_id int references driver NOT NULL,
+    session_id int references session NOT NULL,
+    duration float,
+    lap_number int,
+    UNIQUE(time, driver_id, session_id)
+);
+
+CREATE TABLE stint(
+    driver_id int references driver NOT NULL,
+    session_id int references session NOT NULL,
+    stint_number int NOT NULL,
+    compound varchar(200),
+    lap_start int,
+    lap_end int,
+    tire_age_at_start int,
+    UNIQUE(driver_id, session_id, stint_number)
+);
+
+CREATE VIEW v_session_results(...);
+CREATE VIEW v_lap_detail(...);
+CREATE VIEW v_driver_points(...);
 """
 
 SYSTEM_CONTEXT = (
