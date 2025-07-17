@@ -6,6 +6,7 @@ from functools import lru_cache
 
 import pandas as pd
 from sqlalchemy import create_engine, text
+from sqlalchemy.engine import URL
 from dotenv import load_dotenv
 
 load_dotenv()        # reads .env
@@ -13,9 +14,14 @@ load_dotenv()        # reads .env
 
 @lru_cache
 def _engine():
-    url = (
-        f"postgresql+psycopg2://{os.getenv('PGUSER')}:{os.getenv('PGPASSWORD')}"
-        f"@{os.getenv('PGHOST')}:{os.getenv('PGPORT')}/{os.getenv('PGDATABASE')}"
+    """Create and cache a SQLAlchemy engine with a properly escaped URL."""
+    url = URL.create(
+        drivername="postgresql+psycopg2",
+        username=os.getenv("PGUSER"),
+        password=os.getenv("PGPASSWORD"),
+        host=os.getenv("PGHOST"),
+        port=os.getenv("PGPORT"),
+        database=os.getenv("PGDATABASE"),
     )
     return create_engine(url, pool_pre_ping=True)
 
