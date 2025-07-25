@@ -3,6 +3,8 @@ import os
 import re
 import sqlparse
 from functools import lru_cache
+from typing import Optional
+
 import pandas as pd
 import google.generativeai as genai
 from db import run_query
@@ -222,7 +224,7 @@ SUMMARY_CONTEXT = (
 )
 
 # 3️⃣ Generate SQL from question
-def question_to_sql(question: str, session_id: int | None = None) -> tuple[str, str, str]:
+def question_to_sql(question: str, session_id: Optional[int] = None) -> tuple[str, str, str]:
     prompt = [
         f"{SYSTEM_CONTEXT}\n\nSchema:\n{SCHEMA_SNIPPET}",
         f"Natural language: {question}",
@@ -252,7 +254,7 @@ def _summarize(question: str, df: pd.DataFrame) -> str:
     return resp.text.strip()
 
 # 4️⃣ Run query or fallback to raw
-def ask(question: str, session_id: int | None = None):
+def ask(question: str, session_id: Optional[int] = None):
     if not os.getenv("GEMINI_API_KEY"):
         return {
             "raw": "",
