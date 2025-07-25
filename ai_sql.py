@@ -1,4 +1,5 @@
 # ai_sql.py
+
 import os
 import re
 import sqlparse
@@ -22,6 +23,29 @@ def _model():
             "max_output_tokens": 512,
         },
     )
+
+# ─── Few‑Shot Examples ──────────────────────────────────────────────
+FEW_SHOT = """
+-- Beispiel 1
+-- NL: "Top 3 fastest laps in session 4711"
+-- SQL:
+SELECT d.full_name, l.lap_number, l.duration
+FROM lap l
+JOIN driver d USING(driver_id)
+WHERE l.session_id = 4711
+  AND l.out_lap = 0
+ORDER BY l.duration ASC
+LIMIT 3;
+
+-- Beispiel 2
+-- NL: "Anzahl der Fahrer im Rennen in session 4711"
+-- SQL:
+SELECT COUNT(DISTINCT driver_id) AS driver_count
+FROM result
+WHERE session_id = 4711;
+
+-- Ende Beispiele
+"""
 
 # 2️⃣ Prompt setup
 SCHEMA_SNIPPET = """
@@ -227,20 +251,25 @@ SUMMARY_CONTEXT = (
 def question_to_sql(question: str, session_id: Optional[int] = None) -> tuple[str, str, str]:
     prompt = [
         f"{SYSTEM_CONTEXT}\n\nSchema:\n{SCHEMA_SNIPPET}",
-        f"Natural language: {question}",
+        "Here are some examples of NL→SQL conversions:",
+        FEW_SHOT,
+        f"Natural language: \"{question}\"",
     ]
     if session_id is not None:
         prompt.append(
-            f"The user is interested in data for session_id {session_id}. If appropriate, include a WHERE clause to filter results to this session."
+            f"The user is interested in data for session_id {session_id}. "
+            "If appropriate, include a WHERE clause to filter results to this session."
         )
     prompt.append("SQL:")
     response = _model().generate_content(prompt)
 
     raw_text = response.text.strip()
-    cleaned_sql = raw_text.strip("`").strip()
+
+    # strip any leading "SQL", "sql:", etc. before the actual SELECT
+    cleaned_sql = re.sub(r'(?i)^\s*sql[:\s\n]*', '', raw_text)
+    cleaned_sql = cleaned_sql.strip("`").strip()
 
     return cleaned_sql, raw_text, question
-
 
 def _summarize(question: str, df: pd.DataFrame) -> str:
     """Use Gemini to summarise query results in natural language."""
@@ -263,29 +292,51 @@ def ask(question: str, session_id: Optional[int] = None):
             "answer": None,
             "error": "GEMINI_API_KEY environment variable not set",
         }
+
+    sql, raw, _ = question_to_sql(question, session_id)
+
+    # Versuch, das SQL zu parsen
     try:
-        sql, raw, _ = question_to_sql(question, session_id)
         parsed = sqlparse.parse(sql)[0]
-
-        if parsed.get_type() != "SELECT":
-            raise ValueError("Not a SELECT")
-        if re.search(r";|\b(update|delete|insert|drop|alter)\b", sql, re.I):
-            raise ValueError("Unsafe SQL")
-
-        df = run_query(sql)
-
-        # Summarise results using Gemini
-        if df.empty:
-            answer = "No results found."
-        else:
-            answer = _summarize(question, df)
-
-        return {"raw": raw, "sql": sql, "df": df, "answer": answer, "error": None}
-    except Exception as e:
+    except Exception:
         return {
-            "raw": locals().get("raw", "-- no raw text --"),
-            "sql": None,
+            "raw": raw,
+            "sql": sql,
             "df": None,
             "answer": None,
-            "error": str(e)
+            "error": "Could not parse generated SQL. Please review manually.",
         }
+
+    # Nur SELECT‑Statements erlaubt (Warnung statt Exception)
+    if parsed.get_type() != "SELECT":
+        return {
+            "raw": raw,
+            "sql": sql,
+            "df": None,
+            "answer": None,
+            "error": "Warnung: Generiertes Statement ist kein SELECT. Bitte prüfen.",
+        }
+
+    # DML/DDL‑Keywords weiterhin blocken
+    if re.search(r";|\b(update|delete|insert|drop|alter)\b", sql, re.I):
+        return {
+            "raw": raw,
+            "sql": sql,
+            "df": None,
+            "answer": None,
+            "error": "Unsafe SQL detected – please remove data‑modifying statements.",
+        }
+
+    # SQL ausführen
+    df = run_query(sql)
+
+    # Zusammenfassung erzeugen
+    answer = "No results found." if df.empty else _summarize(question, df)
+
+    return {
+        "raw": raw,
+        "sql": sql,
+        "df": df,
+        "answer": answer,
+        "error": None,
+    }
