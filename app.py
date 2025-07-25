@@ -71,18 +71,51 @@ with tab_lap:
     fig = px.line(lap_df, x="lap_number", y="lap_time_s", color="full_name", markers=True)
     st.plotly_chart(fig, use_container_width=True)
 
-# 3️⃣  Stint comparison
+# 3️⃣  Stint comparison (nur Best Lap)
 with tab_stint:
-    st.subheader("Stint summary (analysis.mv_stint_summary)")
+    st.subheader("Best Lap per Stint (analysis.mv_stint_summary)")
+    
+    # Daten aus der aktualisierten View laden
     stint_df = run_query(
-        "SELECT * FROM analysis.mv_stint_summary WHERE session_id = :sid",
-        sid=int(session_id))
-    st.dataframe(stint_df, use_container_width=True)
-    fig = px.bar(stint_df, x="full_name", y="avg_lap_s",
-                 color="compound", barmode="group", hover_data=["best_lap_s"])
+        """
+        SELECT
+            driver_id,
+            full_name,
+            team_name,
+            team_colour,
+            stint_number,
+            compound,
+            best_lap_s
+        FROM analysis.mv_stint_summary
+        WHERE session_id = :sid
+        """,
+        sid=int(session_id)
+    )
+    
+    # Tabelle mit Best‑Lap‑Zeiten anzeigen
+    st.dataframe(
+        stint_df,
+        use_container_width=True
+    )
+    
+    # Balkendiagramm der Best‑Lap‑Zeiten
+    fig = px.bar(
+        stint_df,
+        x="full_name",
+        y="best_lap_s",
+        color="compound",
+        barmode="group",
+        hover_data=["stint_number", "team_name"]
+    )
+    fig.update_layout(
+        title="Best Lap per Stint",
+        xaxis_title="Fahrer",
+        yaxis_title="Best Lap Time (s)",
+        legend_title="Reifencompound"
+    )
     st.plotly_chart(fig, use_container_width=True)
 
-# 4️⃣  Pit-stop timeline
+
 # 4️⃣  Pit-stop timeline
 with tab_pit:
     pit_df = run_query(
