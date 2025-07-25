@@ -3,6 +3,8 @@ import os
 import re
 import sqlparse
 from functools import lru_cache
+from typing import Optional
+
 import pandas as pd
 import google.generativeai as genai
 from db import run_query
@@ -222,12 +224,17 @@ SUMMARY_CONTEXT = (
 )
 
 # 3️⃣ Generate SQL from question
-def question_to_sql(question: str) -> tuple[str, str, str]:
-    response = _model().generate_content([
+def question_to_sql(question: str, session_id: Optional[int] = None) -> tuple[str, str, str]:
+    prompt = [
         f"{SYSTEM_CONTEXT}\n\nSchema:\n{SCHEMA_SNIPPET}",
         f"Natural language: {question}",
-        "SQL:"
-    ])
+    ]
+    if session_id is not None:
+        prompt.append(
+            f"The user is interested in data for session_id {session_id}. If appropriate, include a WHERE clause to filter results to this session."
+        )
+    prompt.append("SQL:")
+    response = _model().generate_content(prompt)
 
     raw_text = response.text.strip()
     cleaned_sql = raw_text.strip("`").strip()
@@ -247,7 +254,7 @@ def _summarize(question: str, df: pd.DataFrame) -> str:
     return resp.text.strip()
 
 # 4️⃣ Run query or fallback to raw
-def ask(question: str):
+def ask(question: str, session_id: Optional[int] = None):
     if not os.getenv("GEMINI_API_KEY"):
         return {
             "raw": "",
@@ -257,7 +264,7 @@ def ask(question: str):
             "error": "GEMINI_API_KEY environment variable not set",
         }
     try:
-        sql, raw, _ = question_to_sql(question)
+        sql, raw, _ = question_to_sql(question, session_id)
         parsed = sqlparse.parse(sql)[0]
 
         if parsed.get_type() != "SELECT":

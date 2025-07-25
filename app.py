@@ -9,7 +9,6 @@ start_ssh_tunnel()
 
 from db import run_query
 from ai_sql import ask
-from refresh_views import refresh  # optional manual refresh UI
 
 st.set_page_config(page_title="F1 Analytics Suite", layout="wide")
 st.title("🏎️ F1 Analytics Suite")
@@ -23,26 +22,17 @@ with st.sidebar:
     sessions = run_query(
         """
         SELECT s.session_id,
-               CONCAT(m.meeting_name,' – ',s.session_name) AS label
+               m.meeting_name AS label
         FROM session s
         JOIN meeting m ON m.meeting_id = s.meeting_id
-        WHERE m.year = :yr
+        WHERE m.year = :yr AND s.session_type = 'Race'
         ORDER BY m.start
-        """, yr=int(sel_year))
-    session_label = st.selectbox("Session", sessions["label"], index=len(sessions)-1)
+        """,
+        yr=int(sel_year)
+    )
+    session_label = st.selectbox("Race", sessions["label"], index=len(sessions) - 1)
     session_id = sessions.loc[sessions["label"] == session_label, "session_id"].iat[0]
 
-    # optional manual refresh
-    if st.button("↻ Refresh materialised views"):
-        refresh_all = st.checkbox("Full refresh (can take minutes)", value=False)
-        with st.spinner("Refreshing…"):
-            from refresh_views import refresh_all, VIEWS
-            if refresh_all:
-                refresh_all()
-            else:
-                for v in VIEWS:
-                    refresh(v)
-        st.success("Done!")
 
 # ───────────────────────── Tabs ──────────────────────────
 tab_race, tab_lap, tab_stint, tab_pit, tab_sector, tab_season, tab_ai = st.tabs(
@@ -186,7 +176,7 @@ with tab_ai:
         q = st.text_input("Ask something about the F1 data")
         if st.button("Run AI query") and q:
             with st.spinner("Gemini Flash is thinking…"):
-                res = ask(q)
+                res = ask(q, session_id)
             st.session_state.ai_history.append((q, res))
             if res.get("sql"):
                 st.session_state.manual_sql = res["sql"]
