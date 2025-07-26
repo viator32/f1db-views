@@ -19,19 +19,31 @@ with st.sidebar:
     seasons = run_query("SELECT DISTINCT year FROM meeting ORDER BY year DESC")["year"]
     sel_year = st.selectbox("Season", seasons, index=0)
 
+    # fetch all Race sessions for the selected year, ordered by meeting start
     sessions = run_query(
         """
         SELECT s.session_id,
-               m.meeting_name AS label
+               m.meeting_name AS label,
+               m.start
         FROM session s
         JOIN meeting m ON m.meeting_id = s.meeting_id
-        WHERE m.year = :yr AND s.session_type = 'Race'
+        WHERE m.year = :yr
+          AND s.session_type = 'Race'
         ORDER BY m.start
         """,
         yr=int(sel_year)
     )
+
+    # keep only one row per meeting_name (label), keeping the last (i.e. the latest by start)
+    sessions = (
+        sessions
+        .drop_duplicates(subset="label", keep="last")
+        .reset_index(drop=True)
+    )
+
+    # build the selectbox from the de‑duplicated labels
     session_label = st.selectbox("Race", sessions["label"], index=len(sessions) - 1)
-    session_id = sessions.loc[sessions["label"] == session_label, "session_id"].iat[0]
+    session_id = int(sessions.loc[sessions["label"] == session_label, "session_id"].iat[0])
 
 
 # ───────────────────────── Tabs ──────────────────────────
@@ -39,17 +51,23 @@ tab_race, tab_lap, tab_stint, tab_pit, tab_sector, tab_season, tab_ai = st.tabs(
     ["🏁 Race results", "📈 Lap pace", "🛞 Stint cmp.", "🔧 Pit stops",
      "🚥 Sector bests", "📊 Season view", "🤖 Ask AI"])
 
-# 1️⃣  Race results  (unchanged)
+# 1️⃣  Race results
 with tab_race:
     df = run_query(
         "SELECT * FROM v_session_results WHERE session_id = :sid ORDER BY position",
-        sid=int(session_id))
+        sid=session_id
+    )
     st.dataframe(df, use_container_width=True)
-    fig = px.bar(df, x="acronym", y="points", color="team_name",
-                 color_discrete_sequence=["#"+c for c in df.team_colour])
+    fig = px.bar(
+        df,
+        x="acronym",
+        y="points",
+        color="team_name",
+        color_discrete_sequence=["#" + c for c in df.team_colour]
+    )
     st.plotly_chart(fig, use_container_width=True)
 
-# 2️⃣  Lap pace  (unchanged)
+# 2️⃣  Lap pace
 with tab_lap:
     lap_df = run_query(
         """
@@ -57,15 +75,15 @@ with tab_lap:
         FROM v_lap_detail l JOIN driver d USING (driver_id)
         WHERE session_id=:sid AND out_lap=0
         ORDER BY lap_number
-        """, sid=int(session_id))
+        """,
+        sid=session_id
+    )
     fig = px.line(lap_df, x="lap_number", y="lap_time_s", color="full_name", markers=True)
     st.plotly_chart(fig, use_container_width=True)
 
-# 3️⃣  Stint comparison (nur Best Lap)
+# 3️⃣  Stint comparison (Best Lap)
 with tab_stint:
     st.subheader("Best Lap per Stint (analysis.mv_stint_summary)")
-    
-    # Daten aus der aktualisierten View laden
     stint_df = run_query(
         """
         SELECT
@@ -79,16 +97,9 @@ with tab_stint:
         FROM analysis.mv_stint_summary
         WHERE session_id = :sid
         """,
-        sid=int(session_id)
+        sid=session_id
     )
-    
-    # Tabelle mit Best‑Lap‑Zeiten anzeigen
-    st.dataframe(
-        stint_df,
-        use_container_width=True
-    )
-    
-    # Balkendiagramm der Best‑Lap‑Zeiten
+    st.dataframe(stint_df, use_container_width=True)
     fig = px.bar(
         stint_df,
         x="full_name",
@@ -105,7 +116,6 @@ with tab_stint:
     )
     st.plotly_chart(fig, use_container_width=True)
 
-
 # 4️⃣  Pit-stop timeline
 with tab_pit:
     pit_df = run_query(
@@ -114,48 +124,54 @@ with tab_pit:
         FROM analysis.mv_pit_stop_timeline
         WHERE session_id = :sid
         """,
-        sid=int(session_id),
+        sid=session_id
     )
 
     if pit_df.empty:
         st.info("No pit-stop data for this session.")
     else:
         st.subheader("Pit-stop timeline")
-
-        # Plotly needs proper datetime objects
         pit_df["start_time"] = pd.to_datetime(pit_df["start_time"])
         pit_df["end_time"]   = pd.to_datetime(pit_df["end_time"])
-
         fig = px.timeline(
             pit_df,
             x_start="start_time",
             x_end="end_time",
             y="full_name",
             color="team_name",
-            hover_data=["lap_number", "duration"],
+            hover_data=["lap_number", "duration"]
         )
         fig.update_yaxes(autorange="reversed")
         st.plotly_chart(fig, use_container_width=True)
-
 
 # 5️⃣  Sector performance
 with tab_sector:
     sector_df = run_query(
         "SELECT * FROM analysis.mv_sector_performance WHERE session_id = :sid",
-        sid=int(session_id))
+        sid=session_id
+    )
     st.subheader("Best sector times")
-    fig = px.bar(sector_df, x="full_name", y="best_sector_s",
-                 color="sector_number", barmode="group")
+    fig = px.bar(
+        sector_df,
+        x="full_name",
+        y="best_sector_s",
+        color="sector_number",
+        barmode="group"
+    )
     st.plotly_chart(fig, use_container_width=True)
 
 # 6️⃣  Season driver summary
 with tab_season:
     seas_df = run_query(
         "SELECT * FROM analysis.mv_driver_summary_season WHERE year = :y",
-        y=int(sel_year))
+        y=int(sel_year)
+    )
     st.subheader(f"Season {sel_year} points")
-    fig = px.bar(seas_df.sort_values("season_points", ascending=False),
-                 x="full_name", y="season_points")
+    fig = px.bar(
+        seas_df.sort_values("season_points", ascending=False),
+        x="full_name",
+        y="season_points"
+    )
     st.plotly_chart(fig, use_container_width=True)
     st.dataframe(seas_df, use_container_width=True)
 
@@ -183,7 +199,6 @@ with tab_ai:
                 st.session_state.sql_df = res["df"]
                 st.session_state.sql_error = res["error"]
 
-    # Show history, newest on top
     for i, (query, res) in enumerate(reversed(st.session_state.ai_history), 1):
         with st.expander(f"🧠 {i}. {query}", expanded=False):
             st.markdown("#### 📝 Raw Gemini response")
